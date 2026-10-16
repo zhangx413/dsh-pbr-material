@@ -12,7 +12,7 @@ AO / curvature / metallic，数据贴图 16-bit），全程本地跑在 ComfyUI 
 | 第二步顺序为什么不能变 | 固定管线：色相选择性调色 → MakeSeamless → PBRSynth → 16bit 落盘 |
 | "指标过了也要看图" | 平铺量测（与 PBRLabTileValidator 逐字段一致）+ 3×3 预览 |
 
-## 换一台电脑：装好之后让 agent 自己部署
+## 装好之后让 agent 自己部署
 
 ```powershell
 # ZIP：解压到任意目录；或 git clone https://github.com/zhangx413/dsh-pbr-material.git
