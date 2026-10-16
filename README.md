@@ -12,6 +12,27 @@ AO / curvature / metallic，数据贴图 16-bit），全程本地跑在 ComfyUI 
 | 第二步顺序为什么不能变 | 固定管线：色相选择性调色 → MakeSeamless → PBRSynth → 16bit 落盘 |
 | "指标过了也要看图" | 平铺量测（与 PBRLabTileValidator 逐字段一致）+ 3×3 预览 |
 
+## 换一台电脑：装好之后让 agent 自己部署
+
+```powershell
+git clone https://github.com/<你>/dsh-pbr-material.git
+# 按「安装与部署」把仓库挂进 DSH profile，重启 DSH
+```
+
+然后**在对话里说一句**「看看 PBR 插件的环境」就行。agent 会自动做完这些：
+
+```
+pbr_setup_status                 查 ComfyUI / python / 模型库 / 磁盘 / 节点包，并报出每个路径是从哪发现的
+pbr_setup_status(probe_speed)    真下几 MB 测速，推算 12.5 GB 要多久
+pbr_setup_install                后台部署：验证环境 → 建自己的 run root → 链内置节点包
+                                 → 下缺失权重（可续传、带镜像回退）→ 起真实例验证节点注册
+```
+
+前三件（**发现路径 / 节点包 / run root**）它自己解决；只有 **ComfyUI 本身**和 **12.5 GB 权重**
+需要机器上有/要下载。插件从来不写进用户的 ComfyUI——它用自己独立的 run root 和端口。
+
+装完插件后 agent 的 system prompt 里就有这段说明，所以**你不需要解释它要干什么**。
+
 ## 三个工具
 
 | 工具 | 作用 |
@@ -19,6 +40,8 @@ AO / curvature / metallic，数据贴图 16-bit），全程本地跑在 ComfyUI 
 | `pbr_comfy_status` | install / python / 三个模型文件 / pbrlab 节点包 / run root / 空闲显存 / 有没有实例在跑 |
 | `pbr_material_from_photo` | 全流程一条龙，返回贴图路径 + 平铺量测 |
 | `pbr_check_maps` | 对任意已有贴图集做平铺量测并出 3×3 预览 |
+
+另外两个是部署用的（`pbr_setup_status` / `pbr_setup_install`），见上。
 
 **实例策略**：先用 `attachPorts` 找已经在跑的 ComfyUI（找的到就用你那个），找不到才自己起一个
 headless 实例（端口 8288），跑完关掉。这条是刻意的——16 GB 显存装不下两份 Klein 4B + 文本编码器。
