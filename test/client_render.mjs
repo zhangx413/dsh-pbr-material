@@ -407,6 +407,73 @@ test('panel renders, then drives upload -> generate -> results', async () => {
   assert.match(done, /编辑 18s/)
 })
 
+test('direct mode: no description is asked for, and none is sent', async () => {
+  const rt = createRuntime()
+  const { fetchImpl, calls } = makeFetch()
+  installGlobals({ fetchImpl })
+  const mod = loadBundle(rt.react)
+
+  let panel = null
+  const ctx = {
+    slots: {
+      inject: (_key, cb) => cb(),
+      register: (meta, component) => {
+        if (meta.name === 'main') panel = component
+        return () => {}
+      },
+    },
+    effect: () => {},
+    get: () => undefined,
+  }
+  mod.apply(ctx)
+
+  let tree = rt.renderOnce(panel).tree
+  await rt.flush()
+  rt.resetScheduled()
+  tree = rt.renderOnce(panel).tree
+
+  const input = findAll(tree, (n) => n.type === 'input' && n.props.type === 'file')[0]
+  input.props.onChange({ target: { files: [{ name: 'wall.png', type: 'image/png' }], value: '' } })
+  await rt.flush()
+  tree = rt.renderOnce(panel).tree
+
+  // generate is the default, so both boxes are there
+  assert.equal(findAll(tree, (n) => n.type === 'textarea').length, 2, 'generate mode asks for intent + description')
+
+  // switch to direct — this is the whole point of the mode: a photo that is
+  // already a flat texture needs no description at all
+  const directSwitch = findAll(
+    (tree = rt.renderOnce(panel).tree),
+    (n) => n.type === 'button' && texts(n).join(' ').includes('照片已经是正面贴图'),
+  ).at(-1)
+  assert.ok(directSwitch, 'the direct-mode switch must be rendered')
+  directSwitch.props.onClick()
+  tree = rt.renderOnce(panel).tree
+
+  const shown = texts(tree).join(' ')
+  assert.equal(findAll(tree, (n) => n.type === 'textarea').length, 0, 'direct mode must not ask for a description')
+  assert.match(shown, /不需要写任何描述/, 'the hint must explain why nothing is asked for')
+  assert.match(shown, /约 3 秒/, 'the button must state what direct mode costs')
+  assert.match(shown, /原样保留/)
+
+  const go = findAll(tree, (n) => n.type === 'button' && texts(n).join(' ').includes('直接推导 PBR')).at(-1)
+  assert.ok(go, 'the generate button must follow the mode')
+  go.props.onClick()
+  await rt.flush()
+
+  assert.ok(
+    !calls.some((c) => c.path === '/pbr-material/api/draft'),
+    'direct mode must never ask a model to describe anything',
+  )
+  const generateCall = calls.find((c) => c.path === '/pbr-material/api/generate')
+  assert.ok(generateCall, 'generate must still be called')
+  const body = JSON.parse(generateCall.init.body)
+  assert.equal(body.mode, 'direct')
+  assert.equal(body.material, undefined, 'no material description may be sent in direct mode')
+  assert.equal(body.draft, undefined, 'no draft provenance in direct mode')
+  assert.ok(body.imagePath, 'the photo still goes along')
+})
+
 test('a completed job keeps its shape when re-rendered from history', async () => {
   const rt = createRuntime()
   const { fetchImpl } = makeFetch()

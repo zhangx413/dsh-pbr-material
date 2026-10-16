@@ -1,6 +1,6 @@
 ---
 name: pbr-material-from-photo
-description: Turn a photo of an object or surface into a tileable PBR material set (albedo/normal/height/roughness/AO/curvature/metallic, 8-bit and 16-bit). Use when the user wants to extract a material from a reference photo, asks for PBR maps or game-ready textures from an image, or reports that a generated material is not flat / not seamless / not faithful to the reference. Runs fully local in ComfyUI - FLUX.2 Klein 4B for the edit step, deterministic pixel maths for the PBR step.
+description: Turn a photo of an object or surface into a tileable PBR material set (albedo/normal/height/roughness/AO/curvature/metallic, 8-bit and 16-bit). Use when the user wants to extract a material from a reference photo, asks for PBR maps or game-ready textures from an image, or reports that a generated material is not flat / not seamless / not faithful to the reference. Two modes, and choosing wrongly is the most common failure - "direct" for a photo that is already a flat front-facing texture (photo becomes the albedo, ~3 s, detail preserved) and "generate" for a photo of an object with perspective or lighting (a model reworks it first, ~30 s, detail re-invented). Runs fully local in ComfyUI.
 ---
 
 # Photo → PBR material, the way that actually works
@@ -13,6 +13,34 @@ the two architecture sections before writing any graph.
 > what you still need in order to choose the parameters, judge the output, and know
 > when to stop. Machine paths come from the plugin's `config.json`, not from this file.
 
+## FIRST: is step 1 even wanted? (`mode="direct"`)
+
+Step 1 is a *reconstruction*. If the photo is already flat and front-facing, running
+it is not just 26 s wasted — it **destroys the thing the user wanted**. Measured on a
+747×1328 photo of a concrete wall that was already a straight-on texture:
+
+| | albedo the pipeline produced |
+|---|---|
+| `mode="generate"` (step 1 + step 2) | uniform grey speckle, **formwork seams gone, aggregate patches gone, staining gone** |
+| `mode="direct"` (step 2 only) | the photo itself: seams, exposed aggregate, air voids, staining all intact, native 747×1328 |
+
+So make the choice explicitly, and **pass `mode` to `pbr_material_from_photo`**:
+
+- **`mode="direct"`** — the photo IS the albedo. Tile it, derive the maps. No model, no
+  prompt, ~3 s, the photo's own pixels and resolution survive untouched.
+  Use when: the surface fills most of the frame, there is no perspective, no object
+  silhouette, no significant lighting gradient — a wall, floor, metal sheet, fabric
+  swatch, a scan or a downloaded texture. `material` is not needed; pass nothing.
+- **`mode="generate"`** (default) — the photo is a *reference* to be reconstructed first.
+  Use when: the photo shows an object at an angle, has perspective, background, a
+  strong light falloff, or a curved surface.
+
+**Ambiguous input:** if the surface is flat but the framing is angled, `direct` still
+wins after a crop — the plugin does not crop for you, so say so rather than running
+step 1 and losing detail. If the user's complaint is "it doesn't look like my photo
+any more", check whether `generate` was used on a ready-made texture; that is the
+usual cause. This is also why the panel asks the user which one, up front.
+
 ## The two-step architecture (do not collapse it into one)
 
 ```
@@ -20,9 +48,11 @@ reference photo
    │
    ├─ STEP 1  FLUX.2 Klein 4B, instruction edit  →  flat orthographic material image
    │          (removes object structure, perspective, background, lighting)
+   │          SKIPPED entirely in mode="direct"
    │
    └─ STEP 2  deterministic pixel maths          →  tileable PBR set
               hue-selective colour match → make seamless → derive maps
+              (colour match is a step-1 repair, so it is skipped in "direct" too)
 ```
 
 **Why not one step.** Every single-step attempt measurably fails:
@@ -33,6 +63,7 @@ reference photo
 | Plain img2img, low denoise | keeps the material but **keeps the input's composition exactly** - the user called it "just a beautify filter", and perspective survives |
 | txt2img from noise | clean and seamless, but the material is a **different material** |
 | Pixel maths only (warp + flat-field) | faithful, but the user recognised it as **"no different from straightening the photo in Photoshop"** |
+| Step 1 on a photo that is **already** a flat texture | throws away exactly the wanted detail (formwork seams, aggregate, staining) and replaces it with generic speckle, 26 s slower. This is what `mode="direct"` exists for — see the first section |
 
 ### What the model actually takes from the reference (ablation)
 

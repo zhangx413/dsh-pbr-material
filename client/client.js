@@ -221,6 +221,12 @@
 
           var [status, setStatus] = react.useState(null)
           var [image, setImage] = react.useState(null)
+          // Two ways to get maps, and the choice changes everything downstream:
+          //   direct  — the photo is already a flat, front-facing texture; tile it
+          //             and derive. No prompt, ~3 s, the photo's detail survives.
+          //   generate— the photo shows an object/angle; a model reworks it into
+          //             flat albedo first. ~30 s, and the detail is re-invented.
+          var [mode, setMode] = react.useState(prefs.mode === 'direct' ? 'direct' : 'generate')
           var [requirement, setRequirement] = react.useState(prefs.requirement || '')
           var [material, setMaterial] = react.useState(prefs.material || '')
           var [drafting, setDrafting] = react.useState(false)
@@ -286,6 +292,7 @@
           }, [])
 
           react.useEffect(function () { savePrefs({ requirement: requirement }) }, [requirement])
+          react.useEffect(function () { savePrefs({ mode: mode }) }, [mode])
           react.useEffect(function () { savePrefs({ modelChoice: modelChoice }) }, [modelChoice])
           react.useEffect(function () { savePrefs({ material: material }) }, [material])
           react.useEffect(function () {
@@ -433,23 +440,28 @@
             if (!image) { note('err', '先放入一张参考图'); return }
             setBusy('generate')
             note(null, null)
+            var isDirect = mode === 'direct'
             // One button: if there is no English description yet, write it
             // first. An explicit description is never overwritten.
-            var pending = material.trim()
-              ? Promise.resolve(material.trim())
-              : (requirement.trim()
-                ? draft().then(function (d) { return d || '' })
-                : Promise.reject(new Error('② 里写点需求，或者在 ③ 里直接填材质描述')))
+            // Direct mode has no prompt at all, so nothing is required of the user.
+            var pending = isDirect
+              ? Promise.resolve(null)
+              : material.trim()
+                ? Promise.resolve(material.trim())
+                : (requirement.trim()
+                  ? draft().then(function (d) { return d || '' })
+                  : Promise.reject(new Error('② 里写点需求，或者在 ③ 里直接填材质描述')))
             pending
               .then(function (finalMaterial) {
-                if (!finalMaterial) throw new Error('没有拿到可用的材质描述')
+                if (!isDirect && !finalMaterial) throw new Error('没有拿到可用的材质描述')
                 var drafted = lastDraft.current
                 return fetch(API + '/generate', {
                   method: 'POST',
                   headers: { 'content-type': 'application/json' },
                   body: JSON.stringify({
                     imagePath: image.path,
-                    material: finalMaterial,
+                    mode: mode,
+                    material: finalMaterial || undefined,
                     outDir: outDir.trim() || undefined,
                     naming: namingPayload,
                     size: Number(size),
@@ -459,7 +471,7 @@
                     colorMatch: { mode: cmMode, strength: Number(cmStrength) },
                     pbr: { metallic: Number(metallic), baseRoughness: Number(baseRoughness) },
                     keepInstance: keepInstance,
-                    draft: drafted
+                    draft: !isDirect && drafted
                       ? { requirement: requirement, provider: drafted.provider, model: drafted.model }
                       : undefined,
                   }),
@@ -589,7 +601,32 @@
 
           var formCol = h('div', { className: 'pbrx_card' }, [
             h('div', { key: 't', className: 'pbrx_cardTitle' }, [
-              h('span', { key: 'l' }, '② 你的需求'),
+              h('span', { key: 'l' }, '② 怎么处理这张照片'),
+              h('span', { key: 'h', className: 'pbrx_sub' }, '选错了会白等 30 秒，或者把你要的细节丢掉'),
+            ]),
+            h('div', { key: 'm', className: 'pbrx_row', style: { gap: '8px' } }, [
+              h('button', {
+                key: 'd',
+                className: 'pbrx_btn' + (mode === 'direct' ? ' pbrx_btn_on' : ''),
+                style: mode === 'direct' ? { background: 'var(--pbrx_accent)', color: '#fff', borderColor: 'var(--pbrx_accent)' } : null,
+                onClick: function () { setMode('direct') },
+              }, '① 照片已经是正面贴图 → 直接推导'),
+              h('button', {
+                key: 'g',
+                className: 'pbrx_btn' + (mode === 'generate' ? ' pbrx_btn_on' : ''),
+                style: mode === 'generate' ? { background: 'var(--pbrx_accent)', color: '#fff', borderColor: 'var(--pbrx_accent)' } : null,
+                onClick: function () { setMode('generate') },
+              }, '② 照片里有物体/透视 → 先生成再推导'),
+            ]),
+            h('div', { key: 'e', className: mode === 'direct' ? 'pbrx_hint' : 'pbrx_warn' },
+              mode === 'direct'
+                ? '直通：照片就是 albedo，只做平铺 + 推导 PBR，约 3 秒，照片原始分辨率与细节原样保留。不需要写任何描述。'
+                : '生成式：FLUX.2 Klein 会先把照片重绘成平面 albedo，约 30 秒。它会把真实纹理（模板缝、骨料、水渍、精确颜色）替换成"看起来合理"的通用细节 —— 对一张已经拍好的贴图，这通常不是你想要的。'),
+          ])
+
+          var intentCol = mode === 'direct' ? null : h('div', { className: 'pbrx_card' }, [
+            h('div', { key: 't', className: 'pbrx_cardTitle' }, [
+              h('span', { key: 'l' }, '③ 你的需求'),
               h('span', { key: 'h', className: 'pbrx_sub' }, '中文就行 —— 这是说给模型听的，不是给生图软件'),
             ]),
             h('textarea', {
@@ -650,6 +687,12 @@
             cjkInMaterial
               ? h('div', { key: 'w', className: 'pbrx_warn' }, '这一栏是直接喂给 FLUX 的，中文基本无效——先让上面的模型看图写，或者把那句话丢给对话里的我。')
               : null,
+          ])
+
+          // Output location, naming, advanced params and the run button are
+          // mode-independent — a direct run still needs a folder. Only ② and ③
+          // (the prompt) belong to generate mode.
+          var setupCol = h('div', { className: 'pbrx_card' }, [
             h('div', { key: 'o', className: 'pbrx_field' }, [
               h('span', { key: 'l', className: 'pbrx_label' }, '④ 输出文件夹'),
               h('div', { key: 'r', className: 'pbrx_row' }, [
@@ -762,13 +805,17 @@
                 className: 'pbrx_btn pbrx_btnPrimary',
                 disabled: busy === 'generate' || running || drafting,
                 onClick: generate,
-              }, busy === 'generate' ? '提交中…' : running ? '生成中…' : '生成 PBR 贴图集'),
+              }, busy === 'generate' ? '提交中…'
+                : running ? '生成中…'
+                  : mode === 'direct' ? '直接推导 PBR 贴图集（约 3 秒）' : '生成 PBR 贴图集'),
               image ? h('button', { key: 'c', className: 'pbrx_btn', onClick: function () { setImage(null) } }, '换一张') : null,
             ]),
             h('div', { key: 'hint', className: 'pbrx_hint' },
-              material.trim()
-                ? '③ 里已经有描述，生成会直接用它。'
-                : '③ 空着也没关系：点生成会先让模型看图写描述，再跑管线。'),
+              mode === 'direct'
+                ? '直通模式：照片原样当作 albedo，只做平铺和推导。不需要描述，也不会有一个字被编造进贴图。'
+                : material.trim()
+                  ? '③ 里已经有描述，生成会直接用它。'
+                  : '③ 空着也没关系：点生成会先让模型看图写描述，再跑管线。'),
           ])
 
           /* ---------- progress ---------- */
@@ -912,7 +959,14 @@
             ]),
             h('div', { key: 'b' }, bar),
             banner,
-            h('div', { key: 'c', className: 'pbrx_cols' }, [imageCol, formCol]),
+            h('div', { key: 'c', className: 'pbrx_cols' }, [
+              imageCol,
+              h('div', { key: 'r', style: { display: 'flex', flexDirection: 'column', gap: '12px', minWidth: 0 } }, [
+                formCol,
+                intentCol,
+                setupCol,
+              ]),
+            ]),
             progress,
             results,
             history,

@@ -1,6 +1,6 @@
 {
   "name": "dsh-pbr-material",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Photo -> tileable PBR material set, as a DeepSeek Harness plugin. FLUX.2 Klein 4B instruction edit + deterministic PBR derivation, all local through ComfyUI. Ships a GUI workbench, three agent tools, a deployment tool that downloads its own weights, and the measured skill behind it all.",
   "keywords": [
     "deepseek-harness",

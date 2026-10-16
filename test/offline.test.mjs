@@ -13,8 +13,10 @@ import { test } from 'node:test'
 import { DEFAULTS, merge } from '../lib/config.js'
 import { discoverComfy, parseModelPathsYaml } from '../lib/discover.js'
 import { buildEditGraph, buildPbrGraph, EXPECTED_MAPS, SYNTH_OUTPUTS } from '../lib/graphs.js'
+import { imageSize } from '../lib/imageinfo.js'
 import { buildAssetName, planNames } from '../lib/naming.js'
 import { MODEL_MANIFEST } from '../lib/models.js'
+import { materialFromPhoto } from '../lib/pipeline.js'
 import { NEGATIVE_PROMPT, buildEditPrompt } from '../lib/prompts.js'
 
 /**
@@ -106,6 +108,88 @@ test('config merge is deep and patch rows win over file values', () => {
   assert.equal(merged.colorMatch.mode, 'off')
   assert.equal(merged.comfy.python, DEFAULTS.comfy.python, 'untouched keys survive')
   assert.equal(merged.comfy.installDir, DEFAULTS.comfy.installDir)
+})
+
+test('imageSize reads only the header, and never throws on junk', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pbr-size-'))
+
+  // PNG: 8-byte signature, then length + "IHDR" + width + height. Only the
+  // header is parsed, so the CRC does not have to be valid here.
+  const png = Buffer.alloc(32)
+  png.writeUInt32BE(0x89504e47, 0)
+  png.writeUInt32BE(0x0d0a1a0a, 4)
+  png.writeUInt32BE(13, 8)
+  png.write('IHDR', 12, 'latin1')
+  png.writeUInt32BE(747, 16)
+  png.writeUInt32BE(1328, 20)
+  const pngPath = join(dir, 'a.png')
+  writeFileSync(pngPath, png)
+  const pngInfo = imageSize(pngPath)
+  assert.equal(pngInfo.width, 747)
+  assert.equal(pngInfo.height, 1328)
+  assert.equal(pngInfo.format, 'png')
+
+  // JPEG: SOI, an APP0 to skip, then SOF0 which carries the dimensions.
+  const jpeg = Buffer.alloc(40)
+  jpeg[0] = 0xff
+  jpeg[1] = 0xd8
+  jpeg[2] = 0xff
+  jpeg[3] = 0xe0
+  jpeg.writeUInt16BE(16, 4)
+  jpeg[20] = 0xff
+  jpeg[21] = 0xc0
+  jpeg.writeUInt16BE(17, 22)
+  jpeg[24] = 8
+  jpeg.writeUInt16BE(1328, 25)
+  jpeg.writeUInt16BE(747, 27)
+  jpeg[38] = 0xff
+  jpeg[39] = 0xd9
+  const jpegPath = join(dir, 'a.jpg')
+  writeFileSync(jpegPath, jpeg)
+  const jp = imageSize(jpegPath)
+  assert.equal(jp.width, 747)
+  assert.equal(jp.height, 1328)
+  assert.equal(jp.format, 'jpeg')
+
+  // not an image at all: a report with nulls, not a throw
+  const junkPath = join(dir, 'a.txt')
+  writeFileSync(junkPath, 'hello')
+  assert.deepEqual(imageSize(junkPath), { width: null, height: null, bytes: 5, format: null })
+
+  // a missing file is null, never an exception
+  assert.equal(imageSize(join(dir, 'nope.png')), null)
+})
+
+test('the material requirement is mode-gated, before any ComfyUI work', async () => {
+  // A deliberately broken install path: if a call gets past the mode gate it
+  // fails on ComfyUI instead, which is how the two cases are told apart.
+  const broken = { ...DEFAULTS, comfy: { ...DEFAULTS.comfy, installDir: join(tmpdir(), 'nope-not-comfyui') } }
+  const dir = mkdtempSync(join(tmpdir(), 'pbr-gate-'))
+  const photo = join(dir, 'photo.png')
+  writeFileSync(photo, 'not really a png')
+
+  await assert.rejects(
+    () => materialFromPhoto(broken, { imagePath: photo, mode: 'generate' }),
+    /material.*required/,
+    'generate mode must demand a description',
+  )
+  await assert.rejects(
+    () => materialFromPhoto(broken, { imagePath: photo, mode: 'generate', material: '   ' }),
+    /material.*required/,
+    'whitespace is not a description',
+  )
+  // direct mode needs no description, so it must get PAST the gate and die on
+  // the missing install instead.
+  await assert.rejects(
+    () => materialFromPhoto(broken, { imagePath: photo, mode: 'direct' }),
+    /main\.py not found/,
+    'direct mode must not ask for a description',
+  )
+  // an unknown mode falls back to generate, not to the permissive path
+  await assert.rejects(
+    () => materialFromPhoto(broken, { imagePath: photo, mode: 'whatever' }),
+    /material.*required/,
+  )
 })
 
 test('asset naming follows the studio sheet', () => {
