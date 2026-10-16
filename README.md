@@ -15,8 +15,9 @@ AO / curvature / metallic，数据贴图 16-bit），全程本地跑在 ComfyUI 
 ## 换一台电脑：装好之后让 agent 自己部署
 
 ```powershell
-git clone https://github.com/<你>/dsh-pbr-material.git
-# 按「安装与部署」把仓库挂进 DSH profile，重启 DSH
+# ZIP：解压到任意目录；或 git clone https://github.com/zhangx413/dsh-pbr-material.git
+node scripts\install-into-dsh.mjs
+# 重启 DeepSeek Harness
 ```
 
 然后**在对话里说一句**「看看 PBR 插件的环境」就行。agent 会自动做完这些：
@@ -165,9 +166,33 @@ headless 实例（端口 8288），跑完关掉。这条是刻意的——16 GB 
 
 ## 安装与部署
 
-### 装到 DSH 里
+### 方式 A：一条命令（ZIP 或 git clone 都适用）
 
-它是一个 **bundle**，把仓库放进 profile 并登记即可（`<repo>` = 你 clone 下来的目录，
+```powershell
+node scripts\install-into-dsh.mjs --dry-run     # 先看它要改什么
+node scripts\install-into-dsh.mjs               # 真装
+# 然后重启 DeepSeek Harness
+```
+
+它会做两件必不可少的事：把本目录 junction 进 `<profile>\node_modules\dsh-pbr-material`，
+并把 `dsh-pbr-material` 写进 profile 的 `dsh.profile.bundles` 与 `dependencies`。
+改 `package.json` 之前会先备份（`package.json.bak-<时间戳>`），跑第二遍只会说"already"。
+
+| 参数 | 作用 |
+|---|---|
+| （无） | 自动找 profile（`DSH_HOME` → `DSH_PROFILE` → `~/.dsh/profiles/*` 里第一个有 package.json 的） |
+| `--profile <名字>` | 指定 profile，比如 `desktop` |
+| `--profile-dir <路径>` | 直接给 profile 目录 |
+| `--dry-run` | 只打印计划，不写任何东西 |
+| `--force` | 目标已存在**且不是**指向本目录的链接时才需要（否则它会拒绝覆盖） |
+
+> 为什么是 Node 不是 `.ps1`：这台机器上 Group Policy 强制 RemoteSigned，**连
+> `-ExecutionPolicy Bypass` 都被覆盖**，未签名的 `.ps1` 直接拒绝加载（实测）。Node 不受此约束，
+> 而且 DSH 本身就是 Node 应用，Node 必然存在。原来的 `install-into-dsh.ps1` 已因此删除。
+
+### 方式 B：手动
+
+它是一个 **bundle**，把仓库放进 profile 并登记即可（`<repo>` = 你 clone/解压出来的目录，
 `<profile>` = `~/.dsh/profiles/<名字>`，桌面版是 `desktop`）：
 
 ```

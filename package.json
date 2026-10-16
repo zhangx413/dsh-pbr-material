@@ -26,6 +26,7 @@
     "client/**",
     "python/**",
     "skill/**",
+    "scripts/**",
     "assets/**",
     "cordis.patch.yml",
     "README.md",
