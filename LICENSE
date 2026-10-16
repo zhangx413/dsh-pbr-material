@@ -19,17 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-Third-party notes:
-
-* This repository does NOT contain model weights. `pbr_setup_install` downloads
-  them from HuggingFace / hf-mirror. FLUX.2 Klein and Qwen3 each carry their own
-  licence — check them before commercial use.
-* `assets/pbrlab/` is the node pack authored in this project. It is included
-  under the MIT licence above.
-* `skill/assets/` holds probe scripts carried over from the original research
-  that produced the skill. They are documentation of how the numbers in
-  `skill/SKILL.md` were obtained; several still reflect the author's machine.
-  The supported paths are the plugin's tools.
