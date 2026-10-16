@@ -1,0 +1,5 @@
+# dsh-pbr-material bundle patch: inserts this plugin into a profile's layer stack.
+# Applied when a profile lists this bundle.
+- insert:
+    - id: pbr-material
+      name: 'dsh-pbr-material'

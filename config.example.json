@@ -1,0 +1,57 @@
+{
+  "_comment": "全部可选项。机器路径留空 = 自动发现（读 Comfy Desktop 自己写的 comfy-procs/*.json 与 instance-model-paths/*.yaml）。只有自动发现找错时才需要在这里写死。",
+
+  "comfy": {
+    "installDir": "",
+    "python": "",
+    "modelsDir": "",
+    "runRoot": "",
+    "downloadProxy": "",
+    "nodePackPath": "",
+    "attachPorts": [8188, 8000, 8080, 8288],
+    "spawnPort": 8288,
+    "minFreeVramMiB": 9000,
+    "shutdownOnFinish": true
+  },
+
+  "defaults": {
+    "size": 1024,
+    "steps": 20,
+    "cfg": 5.0
+  },
+
+  "colorMatch": {
+    "mode": "hue",
+    "strength": 0.6,
+    "hueLo": 5,
+    "hueHi": 35
+  },
+
+  "pbr": {
+    "blend": 32,
+    "baseRoughness": 0.55,
+    "roughnessSpan": 0.45,
+    "metallic": 0.0
+  },
+
+  "outputDir": "",
+
+  "naming": {
+    "prefix": "T_",
+    "version": "01",
+    "suffixes": {
+      "albedo": "_C",
+      "normal": "_N",
+      "roughness": "_R",
+      "ao": "_AO",
+      "metallic": "_M",
+      "height": "_H",
+      "curvature": "_CURV"
+    },
+    "pack": {
+      "enabled": true,
+      "bitDepth": 8,
+      "kinds": ["CA", "CH", "NRM"]
+    }
+  }
+}

@@ -1,0 +1,6 @@
+# Normalise line endings so a Windows clone and a Linux checkout agree.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.safetensors binary
+*.zip binary
