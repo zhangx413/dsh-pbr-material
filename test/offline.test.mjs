@@ -5,18 +5,18 @@
  * load-bearing prompt clauses, and config merge order.
  */
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 
-import { DEFAULTS, merge } from '../lib/config.js'
+import { DEFAULTS, loadConfig, merge } from '../lib/config.js'
 import { discoverComfy, parseModelPathsYaml } from '../lib/discover.js'
 import { buildEditGraph, buildPbrGraph, EXPECTED_MAPS, SYNTH_OUTPUTS } from '../lib/graphs.js'
 import { imageSize } from '../lib/imageinfo.js'
 import { buildAssetName, planNames } from '../lib/naming.js'
 import { MODEL_MANIFEST } from '../lib/models.js'
-import { materialFromPhoto } from '../lib/pipeline.js'
+import { materialFromPhoto, runPython } from '../lib/pipeline.js'
 import { NEGATIVE_PROMPT, buildEditPrompt } from '../lib/prompts.js'
 
 /**
@@ -190,6 +190,29 @@ test('the material requirement is mode-gated, before any ComfyUI work', async ()
     () => materialFromPhoto(broken, { imagePath: photo, mode: 'whatever' }),
     /material.*required/,
   )
+})
+
+test('python helpers speak utf8 through the pipe, so non-ASCII paths survive', async () => {
+  // The bug this guards: a piped CPython encodes stdout with the LOCALE codec
+  // (cp936 on Chinese Windows) while this side decodes utf8, so every path the
+  // helper echoes back becomes U+FFFD. `pbr_check_maps` on D:\DSH材质\... really
+  // did record "D:\DSH????\..." in the manifest's metrics block.
+  const python = loadConfig().comfy.python
+  if (!python || !existsSync(python)) {
+    console.log('  (skipped: no python discovered on this machine)')
+    return
+  }
+  const dir = mkdtempSync(join(tmpdir(), 'pbr-utf8-'))
+  const script = join(dir, 'emit.py')
+  writeFileSync(
+    script,
+    'import json, sys\nprint(json.dumps({"dir": r"D:/DSH材质/x"}, ensure_ascii=False))\nprint(sys.stdout.encoding)\n',
+    'utf8',
+  )
+  const { stdout } = await runPython(python, script, [], { timeoutMs: 60000 })
+  const [line, encoding] = stdout.split(/\r?\n/)
+  assert.equal(JSON.parse(line).dir, 'D:/DSH材质/x', 'the Chinese path must come back intact')
+  assert.match(String(encoding), /utf-?8/i, `stdout encoding must be forced to utf-8, got ${encoding}`)
 })
 
 test('asset naming follows the studio sheet', () => {
