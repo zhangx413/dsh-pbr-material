@@ -41,6 +41,17 @@ step 1 and losing detail. If the user's complaint is "it doesn't look like my ph
 any more", check whether `generate` was used on a ready-made texture; that is the
 usual cause. This is also why the panel asks the user which one, up front.
 
+**The decisive test is baked lighting, not only perspective.** A flat, front-facing
+image can still be the WRONG input for `direct`: measured on a 1024×1024 chrome
+machinery render, the mirror highlights were baked into the pixels — `direct` would
+have shipped specular highlights as albedo, which no PBR renderer can use. `generate`
+kept the pipe layout (the reference conditioning carries structure) while flattening
+the highlights into a matte base and adding the wear the prompt asked for. That was
+the right call. Rule of thumb:
+
+- a flat, evenly-lit CAPTURE (matte concrete, wood, fabric, a scan) → `direct`
+- an image that already looks like a finished RENDER with its own highlights → `generate`
+
 ## The two-step architecture (do not collapse it into one)
 
 ```
